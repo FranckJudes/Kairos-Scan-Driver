@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.31" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenScan.Core\OpenScan.Core.csproj" />
+    <ProjectReference Include="..\OpenScan.Contracts\OpenScan.Contracts.csproj" />
+    <ProjectReference Include="..\OpenScan.Persistence\OpenScan.Persistence.csproj" />
+    <ProjectReference Include="..\OpenScan.Backends.Escl\OpenScan.Backends.Escl.csproj" />
+    <ProjectReference Include="..\OpenScan.Backends.Sane\OpenScan.Backends.Sane.csproj" />
+    <ProjectReference Include="..\OpenScan.Pipeline\OpenScan.Pipeline.csproj" />
+    <ProjectReference Include="..\OpenScan.Security\OpenScan.Security.csproj" />
+    <ProjectReference Include="..\OpenScan.Backends.Mock\OpenScan.Backends.Mock.csproj" />
+    <ProjectReference Include="..\OpenScan.Backends.Wia\OpenScan.Backends.Wia.csproj" />
+    <ProjectReference Include="..\OpenScan.Backends.Twain\OpenScan.Backends.Twain.csproj" />
+  </ItemGroup>
+
+  <!--
+    OpenScan.Twain.Worker n'est PAS référencé via <ProjectReference> : le SDK refuse (NETSDK1151)
+    qu'un exécutable self-contained soit référencé par un exécutable qui ne l'est pas, même avec
+    ReferenceOutputAssembly="false". On construit donc le worker explicitement via la tâche
+    MSBuild dans les cibles ci-dessous, ce qui garantit aussi le bon ordre de build quand
+    l'Agent est compilé seul (ex. "dotnet run" ciblant uniquement ce projet, qui ne suit pas les
+    dépendances de la solution).
+  -->
+  <!--
+    Destination dans un sous-dossier dédié, JAMAIS directement dans $(TargetDir) : le worker
+    self-contained embarque son propre hostfxr.dll/coreclr.dll (x86). Les copier à plat à côté de
+    OpenScan.Agent.exe (x64) fait que l'hôte .NET de l'Agent charge le hostfxr.dll x86 local par
+    erreur au démarrage (détection self-contained basée sur la présence du fichier), ce qui plante
+    l'Agent lui-même avec HRESULT 0x800700C1 (mismatch d'architecture).
+  -->
+  <Target Name="BuildAndCopyTwainWorker" AfterTargets="Build">
+    <MSBuild Projects="..\OpenScan.Twain.Worker\OpenScan.Twain.Worker.csproj" Targets="Restore;Build" Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <TwainWorkerFiles Include="..\OpenScan.Twain.Worker\bin\$(Configuration)\$(TargetFramework)\win-x86\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TwainWorkerFiles)" DestinationFolder="$(TargetDir)twain-worker\" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="BuildAndCopyTwainWorkerOnPublish" AfterTargets="Publish">
+    <MSBuild Projects="..\OpenScan.Twain.Worker\OpenScan.Twain.Worker.csproj" Targets="Restore;Build" Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <TwainWorkerFiles Include="..\OpenScan.Twain.Worker\bin\$(Configuration)\$(TargetFramework)\win-x86\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(TwainWorkerFiles)" DestinationFolder="$(PublishDir)twain-worker\" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

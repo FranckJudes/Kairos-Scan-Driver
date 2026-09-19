@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- Self-contained x86 : embarque son propre runtime .NET, aucune installation requise
+         côté utilisateur final (section 22 : packaging sans configuration technique). -->
+    <RuntimeIdentifier>win-x86</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenScan.Contracts\OpenScan.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\OpenScan.Backends.Twain\WorkerProtocol.cs" Link="WorkerProtocol.cs" />
+    <Compile Include="..\OpenScan.Backends.Twain\TwainErrorMapper.cs" Link="TwainErrorMapper.cs" />
+    <Compile Include="..\OpenScan.Backends.Twain\TwainCapabilityMapper.cs" Link="TwainCapabilityMapper.cs" />
+    <Compile Include="..\OpenScan.Backends.Twain\TwainDsmLocator.cs" Link="TwainDsmLocator.cs" />
+  </ItemGroup>
+
+</Project>
