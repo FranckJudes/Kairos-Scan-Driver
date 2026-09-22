@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenScan Engine Agent Service
+Documentation=https://github.com/FranckJudes/Kairos-Scan-Driver
+After=network.target
+
+[Service]
+Type=simple
+User=openscan
+Group=openscan
+WorkingDirectory=/opt/openscan-agent
+ExecStart=/opt/openscan-agent/OpenScan.Agent
+Restart=on-failure
+RestartSec=5
+Environment=OPENSCAN_DATA_DIR=/var/lib/openscan
+SyslogIdentifier=openscan-agent
+
+# Permissions & isolation
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/openscan
+
+[Install]
+WantedBy=multi-user.target

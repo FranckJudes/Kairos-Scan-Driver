@@ -9,9 +9,8 @@ internal static class ScanEngineExceptionExtensions
         var status = ex.Code switch
         {
             ErrorCode.ScannerNotFound or ErrorCode.JobNotFound => StatusCodes.Status404NotFound,
-            ErrorCode.ScannerBusy => StatusCodes.Status409Conflict,
+            ErrorCode.ScannerBusy or ErrorCode.Cancelled or ErrorCode.InvalidJobState => StatusCodes.Status409Conflict,
             ErrorCode.CapabilityUnsupported or ErrorCode.InvalidConfiguration => StatusCodes.Status422UnprocessableEntity,
-            ErrorCode.Cancelled => StatusCodes.Status409Conflict,
             _ => StatusCodes.Status500InternalServerError
         };
 

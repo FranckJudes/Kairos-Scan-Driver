@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Threading.Channels;
 using OpenScan.Contracts;
 using OpenScan.Core.Abstractions;
+using OpenScan.Pipeline;
 
 namespace OpenScan.Core;
 
@@ -15,6 +16,7 @@ public sealed class JobManager
     private readonly IJobRepository _jobRepository;
     private readonly IPageRepository _pageRepository;
     private readonly IPageStorage _pageStorage;
+    private readonly IImageProcessor _imageProcessor;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _runningJobs = new();
 
     public JobManager(
@@ -22,13 +24,15 @@ public sealed class JobManager
         IEventBus eventBus,
         IJobRepository jobRepository,
         IPageRepository pageRepository,
-        IPageStorage pageStorage)
+        IPageStorage pageStorage,
+        IImageProcessor? imageProcessor = null)
     {
         _deviceManager = deviceManager;
         _eventBus = eventBus;
         _jobRepository = jobRepository;
         _pageRepository = pageRepository;
         _pageStorage = pageStorage;
+        _imageProcessor = imageProcessor ?? new ImageSharpProcessor();
     }
 
     public async Task<ScanJob> StartScanAsync(string scannerId, ScanProfile profile, CancellationToken ct = default)
@@ -69,15 +73,151 @@ public sealed class JobManager
         job.Status = JobStatus.Ready;
         await _jobRepository.SaveAsync(job, ct);
 
-        _deviceManager.Reserve(scannerId, job.Id);
+        await LaunchAcquisitionAsync(job, backend, pageNumberOffset: 0, ct);
+
+        return job;
+    }
+
+    /// <summary>
+    /// Reprend un job de numérisation annulé (<see cref="JobStatus.Cancelled"/>) ou en erreur récupérable (<see cref="JobStatus.RecoverableError"/>).
+    /// </summary>
+    /// <param name="jobId">Identifiant unique du job à reprendre.</param>
+    /// <param name="fromPage">
+    /// Numéro de page logique (1-indexé) à partir duquel numéroter les nouvelles pages acquises (<c>resume_from_page</c>).
+    /// <para>
+    /// <b>Limite physique du matériel (ADF) :</b> Aucun pilote ni protocole de scanner (SANE, WIA, TWAIN) ne permet
+    /// de "rembobiner" ou faire "sauter" le chargeur automatique de documents (ADF) jusqu'à une page physique précise.
+    /// Ce paramètre sert d'indice logique et de traçabilité pour décaler la numérotation des pages dans le système,
+    /// tandis que le scanner traite les feuilles physiques restantes réinsérées par l'utilisateur.
+    /// Si ce paramètre est omis (<c>null</c>), la numérotation reprend automatiquement à la suite (<c>job.TotalPages + 1</c>).
+    /// </para>
+    /// </param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    /// <returns>Le <see cref="ScanJob"/> remis en exécution.</returns>
+    /// <exception cref="ScanEngineException">
+    /// Levée avec <see cref="ErrorCode.JobNotFound"/> si le job n'existe pas,
+    /// avec <see cref="ErrorCode.InvalidJobState"/> si le job n'est pas dans un état éligible,
+    /// ou avec <see cref="ErrorCode.ScannerBusy"/> si le scanner est actuellement réservé par un autre job.
+    /// </exception>
+    public async Task<ScanJob> ResumeJobAsync(string jobId, int? fromPage = null, CancellationToken ct = default)
+    {
+        var job = await _jobRepository.GetAsync(jobId, ct)
+            ?? throw new ScanEngineException(ErrorCode.JobNotFound, $"Job '{jobId}' introuvable.");
+
+        if (job.Status != JobStatus.Cancelled && job.Status != JobStatus.RecoverableError)
+        {
+            throw new ScanEngineException(
+                ErrorCode.InvalidJobState,
+                $"Le job '{jobId}' est dans l'état '{job.Status}' et ne peut pas être repris. Seuls les états Cancelled et RecoverableError sont éligibles.");
+        }
+
+        if (fromPage.HasValue && fromPage.Value < 1)
+        {
+            throw new ScanEngineException(ErrorCode.InvalidConfiguration, "Le paramètre 'fromPage' doit être supérieur ou égal à 1.");
+        }
+
+        var offset = fromPage.HasValue ? fromPage.Value - 1 : job.TotalPages;
+
+        var scanner = _deviceManager.GetScanner(job.ScannerId);
+        var backend = _deviceManager.GetBackendFor(scanner);
+
+        await LaunchAcquisitionAsync(job, backend, offset, ct);
+
+        return job;
+    }
+
+    /// <summary>
+    /// Relance un job en erreur (<see cref="JobStatus.Error"/> ou <see cref="JobStatus.RecoverableError"/>).
+    /// Les pages déjà acquises ou en erreur restent dans l'historique ; les nouvelles pages acquises s'ajoutent à la suite.
+    /// </summary>
+    /// <param name="jobId">Identifiant unique du job à relancer.</param>
+    /// <param name="ct">Jeton d'annulation.</param>
+    /// <returns>Le <see cref="ScanJob"/> remis en exécution.</returns>
+    /// <exception cref="ScanEngineException">
+    /// Levée avec <see cref="ErrorCode.JobNotFound"/> si le job n'existe pas,
+    /// avec <see cref="ErrorCode.InvalidJobState"/> si le job n'est pas dans un état éligible,
+    /// ou avec <see cref="ErrorCode.ScannerBusy"/> si le scanner est actuellement réservé par un autre job.
+    /// </exception>
+    public async Task<ScanJob> RetryJobAsync(string jobId, CancellationToken ct = default)
+    {
+        var job = await _jobRepository.GetAsync(jobId, ct)
+            ?? throw new ScanEngineException(ErrorCode.JobNotFound, $"Job '{jobId}' introuvable.");
+
+        if (job.Status != JobStatus.Error && job.Status != JobStatus.RecoverableError)
+        {
+            throw new ScanEngineException(
+                ErrorCode.InvalidJobState,
+                $"Le job '{jobId}' est dans l'état '{job.Status}' et ne peut pas être relancé. Seuls les états Error et RecoverableError sont éligibles.");
+        }
+
+        var offset = job.TotalPages;
+
+        var scanner = _deviceManager.GetScanner(job.ScannerId);
+        var backend = _deviceManager.GetBackendFor(scanner);
+
+        await LaunchAcquisitionAsync(job, backend, offset, ct);
+
+        return job;
+    }
+
+    /// <summary>
+    /// Réconcilie les jobs orphelins restés à l'état Running après un arrêt brutal ou crash de l'Agent.
+    /// Les requalifie en RecoverableError pour permettre à l'utilisateur de les reprendre ou relancer.
+    /// </summary>
+    public async Task ReconcileOrphanedJobsAsync(CancellationToken ct = default)
+    {
+        var jobs = await _jobRepository.ListAsync(ct);
+        foreach (var job in jobs)
+        {
+            if (job.Status == JobStatus.Running)
+            {
+                job.Status = JobStatus.RecoverableError;
+                job.CompletedAt = DateTimeOffset.UtcNow;
+                job.Error = new ScanError
+                {
+                    Code = ErrorCode.AcquisitionError,
+                    Message = "Agent redémarré pendant l'acquisition.",
+                    JobId = job.Id,
+                    ScannerId = job.ScannerId,
+                    Recoverable = true
+                };
+
+                await _jobRepository.SaveAsync(job, ct);
+                await PublishJobEvent(EventNames.ScanError, job, ct);
+            }
+        }
+    }
+
+    private async Task LaunchAcquisitionAsync(
+        ScanJob job,
+        IScannerBackend backend,
+        int pageNumberOffset,
+        CancellationToken ct)
+    {
+        var effectiveConfig = job.EffectiveConfiguration;
+        if (effectiveConfig is null)
+        {
+            if (job.RequestedConfiguration is not null)
+            {
+                var caps = await backend.GetCapabilitiesAsync(job.ScannerId, ct);
+                effectiveConfig = ConfigurationEngine.Validate(job.RequestedConfiguration, caps);
+                job.EffectiveConfiguration = effectiveConfig;
+            }
+            else
+            {
+                throw new ScanEngineException(ErrorCode.InvalidConfiguration, "Configuration du job introuvable.");
+            }
+        }
+
+        _deviceManager.Reserve(job.ScannerId, job.Id);
 
         try
         {
-            await backend.ConfigureAsync(scannerId, job.Id, job.EffectiveConfiguration!, ct);
+            await backend.ConfigureAsync(job.ScannerId, job.Id, effectiveConfig, ct);
         }
         catch (ScanEngineException ex)
         {
-            _deviceManager.Release(scannerId);
+            _deviceManager.Release(job.ScannerId);
             job.Status = JobStatus.Error;
             job.Error = ex.ToScanError();
             await _jobRepository.SaveAsync(job, ct);
@@ -89,13 +229,16 @@ public sealed class JobManager
         _runningJobs[job.Id] = jobCts;
 
         job.Status = JobStatus.Running;
-        job.StartedAt = DateTimeOffset.UtcNow;
+        if (job.StartedAt is null)
+        {
+            job.StartedAt = DateTimeOffset.UtcNow;
+        }
+        job.CompletedAt = null;
+        job.Error = null;
         await _jobRepository.SaveAsync(job, ct);
         await PublishJobEvent(EventNames.ScanStarted, job, ct);
 
-        _ = RunAcquisitionAsync(job, backend, jobCts.Token);
-
-        return job;
+        _ = RunAcquisitionAsync(job, backend, pageNumberOffset, jobCts.Token);
     }
 
     public async Task CancelJobAsync(string jobId, CancellationToken ct = default)
@@ -113,7 +256,7 @@ public sealed class JobManager
         await backend.CancelAsync(job.ScannerId, jobId, CancellationToken.None);
     }
 
-    private async Task RunAcquisitionAsync(ScanJob job, IScannerBackend backend, CancellationToken ct)
+    private async Task RunAcquisitionAsync(ScanJob job, IScannerBackend backend, int pageNumberOffset, CancellationToken ct)
     {
         var channel = Channel.CreateBounded<AcquiredPage>(new BoundedChannelOptions(PageQueueCapacity)
         {
@@ -123,7 +266,7 @@ public sealed class JobManager
         });
 
         var producer = ProduceAsync(job, backend, channel.Writer, ct);
-        var consumer = ConsumeAsync(job, channel.Reader, ct);
+        var consumer = ConsumeAsync(job, channel.Reader, pageNumberOffset, ct);
 
         try
         {
@@ -143,8 +286,22 @@ public sealed class JobManager
         }
         catch (ScanEngineException ex)
         {
-            job.Status = JobStatus.Error;
+            job.Status = ex.Recoverable ? JobStatus.RecoverableError : JobStatus.Error;
             job.Error = ex.ToScanError();
+            job.CompletedAt = DateTimeOffset.UtcNow;
+            await _jobRepository.SaveAsync(job, CancellationToken.None);
+            await PublishJobEvent(EventNames.ScanError, job, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            job.Status = JobStatus.Error;
+            job.Error = new ScanError
+            {
+                Code = ErrorCode.AcquisitionError,
+                Message = ex.Message,
+                JobId = job.Id,
+                Recoverable = true
+            };
             job.CompletedAt = DateTimeOffset.UtcNow;
             await _jobRepository.SaveAsync(job, CancellationToken.None);
             await PublishJobEvent(EventNames.ScanError, job, CancellationToken.None);
@@ -178,15 +335,16 @@ public sealed class JobManager
         }
     }
 
-    private async Task ConsumeAsync(ScanJob job, ChannelReader<AcquiredPage> reader, CancellationToken ct)
+    private async Task ConsumeAsync(ScanJob job, ChannelReader<AcquiredPage> reader, int pageNumberOffset, CancellationToken ct)
     {
         await foreach (var acquired in reader.ReadAllAsync(ct))
         {
+            var pageNumber = acquired.PageNumber + pageNumberOffset;
             var page = new ScanPage
             {
-                Id = $"{job.Id}-{acquired.PageNumber:D4}",
+                Id = $"{job.Id}-{pageNumber:D4}",
                 JobId = job.Id,
-                PageNumber = acquired.PageNumber,
+                PageNumber = pageNumber,
                 Width = acquired.Width,
                 Height = acquired.Height,
                 Dpi = acquired.Dpi,
@@ -199,11 +357,19 @@ public sealed class JobManager
 
             try
             {
-                var (reference, checksum) = await _pageStorage.SaveAsync(job.Id, page.Id, acquired.Data, ct);
-                page.FileReference = reference;
-                page.Checksum = checksum;
-                page.Status = PageStatus.Persisted;
-                await _pageRepository.SaveAsync(page, ct);
+                var processed = await _imageProcessor.ProcessPageAsync(acquired, job.RequestedConfiguration, ct);
+                page.Width = processed.Width;
+                page.Height = processed.Height;
+                page.PixelFormat = processed.PixelFormat;
+
+                await using (processed.JpegStream)
+                {
+                    var (reference, checksum) = await _pageStorage.SaveAsync(job.Id, page.Id, processed.JpegStream, ct);
+                    page.FileReference = reference;
+                    page.Checksum = checksum;
+                    page.Status = PageStatus.Persisted;
+                    await _pageRepository.SaveAsync(page, ct);
+                }
 
                 job.ProcessedPages++;
                 await PublishPageEvent(EventNames.PagePersisted, job, page, ct);
@@ -213,7 +379,7 @@ public sealed class JobManager
                 page.Status = PageStatus.Error;
                 page.Error = new ScanError
                 {
-                    Code = ErrorCode.StorageError,
+                    Code = ex is ScanEngineException see ? see.Code : ErrorCode.StorageError,
                     Message = ex.Message,
                     JobId = job.Id,
                     PageId = page.Id,
@@ -228,7 +394,7 @@ public sealed class JobManager
                 await acquired.Data.DisposeAsync();
             }
 
-            job.TotalPages = Math.Max(job.TotalPages, acquired.PageNumber);
+            job.TotalPages = Math.Max(job.TotalPages, pageNumber);
             await _jobRepository.SaveAsync(job, ct);
         }
     }

@@ -1,25 +1,49 @@
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.AspNetCore.Mvc;
 using OpenScan.Agent;
 using OpenScan.Backends.Mock;
 using OpenScan.Backends.Sane;
 using OpenScan.Backends.Wia;
 using OpenScan.Backends.Twain;
+using OpenScan.Backends.Escl;
 using OpenScan.Contracts;
 using OpenScan.Core;
 using OpenScan.Core.Abstractions;
 using OpenScan.Persistence;
+using OpenScan.Core.Hosting;
+using OpenScan.Pipeline;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Hébergement en tant que service (Windows SCM ou systemd Linux)
+builder.Host.UseWindowsService(options => options.ServiceName = "OpenScanAgent");
+builder.Host.UseSystemd();
 
-var dataDirectory = Path.Combine(AppContext.BaseDirectory, "data");
+// Résolution de l'emplacement des données
+var dataDirectory = DataDirectoryResolver.Resolve(
+    builder.Configuration["DataDirectory"] ?? builder.Configuration["Data:Directory"]);
 Directory.CreateDirectory(dataDirectory);
-var dbPath = Path.Combine(dataDirectory, "openscan.db");
-var pagesDirectory = Path.Combine(dataDirectory, "pages");
+
+// Verrou mono-instance : empêche les collisions de ports et la corruption de base
+var lockTarget = OperatingSystem.IsWindows()
+    ? SingleInstanceGuard.DefaultWindowsMutexName
+    : Path.Combine(dataDirectory, SingleInstanceGuard.DefaultLinuxLockFileName);
+
+if (!SingleInstanceGuard.TryAcquire(lockTarget, out var instanceLock))
+{
+    Console.Error.WriteLine($"[OpenScanAgent] Impossible de démarrer : une autre instance est déjà en cours d'exécution (verrou: {lockTarget}).");
+    return 1;
+}
+
+using (instanceLock)
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen();
+
+    var dbPath = Path.Combine(dataDirectory, "openscan.db");
+    var pagesDirectory = Path.Combine(dataDirectory, "pages");
 
 builder.Services.AddSingleton(new SqliteConnectionFactory($"Data Source={dbPath}"));
 builder.Services.AddSingleton<IJobRepository, SqliteJobRepository>();
@@ -30,9 +54,14 @@ builder.Services.AddSingleton<IEventBus, InMemoryEventBus>();
 builder.Services.AddSingleton<IScannerBackend, MockScannerBackend>();
 builder.Services.AddSingleton<IScannerBackend, SaneScannerBackend>(); 
 builder.Services.AddSingleton<IScannerBackend, WiaScannerBackend>(); 
+builder.Services.AddHttpClient();
+builder.Services.Configure<EsclOptions>(builder.Configuration.GetSection(EsclOptions.SectionName));
 builder.Services.AddSingleton<ITwainLogger>(sp =>
     new AspNetTwainLogger(sp.GetRequiredService<ILogger<TwainScannerBackend>>()));
-builder.Services.AddSingleton<IScannerBackend, TwainScannerBackend>(); 
+builder.Services.AddSingleton<IScannerBackend, TwainScannerBackend>();
+builder.Services.AddSingleton<IScannerBackend, EsclScannerBackend>();
+builder.Services.AddSingleton<IImageProcessor, ImageSharpProcessor>();
+builder.Services.AddSingleton<IPdfExporter, MinimalPdfExporter>();
 builder.Services.AddSingleton<DeviceManager>();
 builder.Services.AddSingleton<JobManager>();
 
@@ -40,6 +69,7 @@ var app = builder.Build();
 
 SqliteSchema.EnsureCreated(app.Services.GetRequiredService<SqliteConnectionFactory>());
 await app.Services.GetRequiredService<DeviceManager>().DiscoverAllAsync();
+await app.Services.GetRequiredService<JobManager>().ReconcileOrphanedJobsAsync();
 
 if (app.Environment.IsDevelopment())
 {
@@ -139,6 +169,19 @@ api.MapGet("/scans/{id}/pages/{pageId}", async (string id, string pageId, IPageR
     return page is null || page.JobId != id ? Results.NotFound() : Results.Ok(page);
 });
 
+api.MapGet("/scans/{id}/pages/{pageId}/image", (string id, string pageId, IPageRepository repo, IPageStorage storage, CancellationToken ct) =>
+    ScanEndpoints.GetPageImageAsync(id, pageId, repo, storage, ct));
+
+api.MapGet("/scans/{id}/export", (
+    string id,
+    [FromQuery] string? format,
+    IJobRepository jobRepo,
+    IPageRepository pageRepo,
+    IPageStorage storage,
+    IPdfExporter pdfExporter,
+    CancellationToken ct) =>
+    ScanEndpoints.ExportScanAsync(id, format, jobRepo, pageRepo, storage, pdfExporter, ct));
+
 api.MapPost("/scans/{id}/cancel", async (string id, JobManager jobs, CancellationToken ct) =>
 {
     try
@@ -149,11 +192,11 @@ api.MapPost("/scans/{id}/cancel", async (string id, JobManager jobs, Cancellatio
     catch (ScanEngineException ex) { return ex.ToProblem(); }
 });
 
-api.MapPost("/scans/{id}/resume", () =>
-    Results.Problem("Aucun backend actuel ne supporte la reprise.", statusCode: StatusCodes.Status501NotImplemented));
+api.MapPost("/scans/{id}/resume", (string id, [FromQuery] int? fromPage, JobManager jobs, CancellationToken ct) =>
+    ScanEndpoints.ResumeScanAsync(id, fromPage, jobs, ct));
 
-api.MapPost("/scans/{id}/retry", () =>
-    Results.Problem("Aucun backend actuel ne supporte le retry.", statusCode: StatusCodes.Status501NotImplemented));
+api.MapPost("/scans/{id}/retry", (string id, JobManager jobs, CancellationToken ct) =>
+    ScanEndpoints.RetryScanAsync(id, jobs, ct));
 
 app.Map("/ws", async (HttpContext context, IEventBus eventBus) =>
 {
@@ -192,7 +235,9 @@ app.Map("/ws", async (HttpContext context, IEventBus eventBus) =>
     }
 });
 
-app.Run();
+    app.Run();
+    return 0;
+}
 
 sealed record CreateScanRequest(string ScannerId, string? ProfileId, ScanProfile? Profile);
 

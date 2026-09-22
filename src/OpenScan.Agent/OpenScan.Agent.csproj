@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.31" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
@@ -39,16 +41,22 @@
     erreur au démarrage (détection self-contained basée sur la présence du fichier), ce qui plante
     l'Agent lui-même avec HRESULT 0x800700C1 (mismatch d'architecture).
   -->
-  <Target Name="BuildAndCopyTwainWorker" AfterTargets="Build">
-    <MSBuild Projects="..\OpenScan.Twain.Worker\OpenScan.Twain.Worker.csproj" Targets="Restore;Build" Properties="Configuration=$(Configuration)" />
+  <!--
+    Condition="'$(RuntimeIdentifier)' == '' OR ...StartsWith('win')" : sans ça, publier l'Agent
+    pour une cible non-Windows (ex. `dotnet publish -r linux-x64`) fait fuiter ce RuntimeIdentifier
+    dans l'appel MSBuild imbriqué ci-dessous, qui entre en conflit avec le PlatformTarget=x86 figé
+    du worker (NETSDK1032) — et de toute façon TWAIN/le worker n'ont aucun sens hors Windows.
+  -->
+  <Target Name="BuildAndCopyTwainWorker" AfterTargets="Build" Condition="'$(RuntimeIdentifier)' == '' OR $(RuntimeIdentifier.StartsWith('win'))">
+    <MSBuild Projects="..\OpenScan.Twain.Worker\OpenScan.Twain.Worker.csproj" Targets="Restore;Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x86;SelfContained=true" />
     <ItemGroup>
       <TwainWorkerFiles Include="..\OpenScan.Twain.Worker\bin\$(Configuration)\$(TargetFramework)\win-x86\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(TwainWorkerFiles)" DestinationFolder="$(TargetDir)twain-worker\" SkipUnchangedFiles="true" />
   </Target>
 
-  <Target Name="BuildAndCopyTwainWorkerOnPublish" AfterTargets="Publish">
-    <MSBuild Projects="..\OpenScan.Twain.Worker\OpenScan.Twain.Worker.csproj" Targets="Restore;Build" Properties="Configuration=$(Configuration)" />
+  <Target Name="BuildAndCopyTwainWorkerOnPublish" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' == '' OR $(RuntimeIdentifier.StartsWith('win'))">
+    <MSBuild Projects="..\OpenScan.Twain.Worker\OpenScan.Twain.Worker.csproj" Targets="Restore;Build" Properties="Configuration=$(Configuration);RuntimeIdentifier=win-x86;SelfContained=true" />
     <ItemGroup>
       <TwainWorkerFiles Include="..\OpenScan.Twain.Worker\bin\$(Configuration)\$(TargetFramework)\win-x86\*.*" />
     </ItemGroup>

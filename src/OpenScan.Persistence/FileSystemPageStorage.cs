@@ -17,11 +17,15 @@ public sealed class FileSystemPageStorage : IPageStorage
         Directory.CreateDirectory(_rootDirectory);
     }
 
-    public async Task<(string Reference, string Checksum)> SaveAsync(string jobId, string pageId, Stream data, CancellationToken ct = default)
+    public Task<(string Reference, string Checksum)> SaveAsync(string jobId, string pageId, Stream data, CancellationToken ct = default) =>
+        SaveAsync(jobId, pageId, data, extension: ".jpg", ct);
+
+    public async Task<(string Reference, string Checksum)> SaveAsync(string jobId, string pageId, Stream data, string extension, CancellationToken ct = default)
     {
         var jobDirectory = Path.Combine(_rootDirectory, jobId);
         Directory.CreateDirectory(jobDirectory);
-        var path = Path.Combine(jobDirectory, $"{pageId}.bin");
+        var ext = string.IsNullOrWhiteSpace(extension) ? ".jpg" : (extension.StartsWith('.') ? extension : "." + extension);
+        var path = Path.Combine(jobDirectory, $"{pageId}{ext}");
 
         using var sha256 = SHA256.Create();
         await using (var fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))

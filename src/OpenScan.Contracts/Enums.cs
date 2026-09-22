@@ -53,6 +53,7 @@ public enum ErrorCode
     MultiFeed,
     CapabilityUnsupported,
     InvalidConfiguration,
+    InvalidJobState,
     AcquisitionError,
     ProcessingError,
     StorageError,

@@ -294,6 +294,18 @@ public sealed class TwainScannerBackend : IScannerBackend
             }
 
             // Si le worker quitte inopinément sans BatchCompleteResponse
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.WaitForExit(2000);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
             if (process.HasExited && process.ExitCode != 0)
             {
                 var stderr = await process.StandardError.ReadToEndAsync(CancellationToken.None);

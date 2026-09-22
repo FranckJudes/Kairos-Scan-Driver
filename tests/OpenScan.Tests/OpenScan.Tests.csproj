@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -29,6 +29,13 @@
     <ProjectReference Include="..\..\src\OpenScan.Backends.Sane\OpenScan.Backends.Sane.csproj" />
     <ProjectReference Include="..\..\src\OpenScan.Backends.Wia\OpenScan.Backends.Wia.csproj" />
     <ProjectReference Include="..\..\src\OpenScan.Backends.Twain\OpenScan.Backends.Twain.csproj" />
+    <ProjectReference Include="..\..\src\OpenScan.Backends.Escl\OpenScan.Backends.Escl.csproj" />
+    <ProjectReference Include="..\..\src\OpenScan.Pipeline\OpenScan.Pipeline.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\OpenScan.Agent\ScanEndpoints.cs" Link="ScanEndpoints.cs" />
+    <Compile Include="..\..\src\OpenScan.Agent\ScanEngineExceptionExtensions.cs" Link="ScanEngineExceptionExtensions.cs" />
   </ItemGroup>
 
 </Project>
