@@ -7,8 +7,8 @@
     coûte rien et c'est une bonne pratique de toute façon.
   -->
   <PropertyGroup>
-    <Company>KairosScan Engine</Company>
-    <Product>KairosScan Engine</Product>
+    <Company>Kairos Scan Engine</Company>
+    <Product>Kairos Scan Engine</Product>
     <Authors>FranckJudes</Authors>
     <Copyright>Copyright © $([System.DateTime]::Now.Year) FranckJudes</Copyright>
     <NeutralLanguage>fr</NeutralLanguage>

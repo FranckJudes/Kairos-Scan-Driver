@@ -14,7 +14,7 @@ case "$1" in
     configure)
         # 1. Création de l'utilisateur système dédié (sans shell interactif)
         if ! id -u "${USER_NAME}" >/dev/null 2>&1; then
-            useradd -r -s /bin/false -d "${DATA_DIR}" -c "OpenScan Agent Service" "${USER_NAME}"
+            useradd -r -s /bin/false -d "${DATA_DIR}" -c "Kairos Scan Engine Agent Service" "${USER_NAME}"
         fi
 
         # 2. Ajout aux groupes scanner et lp (accès aux périphériques USB / SANE)

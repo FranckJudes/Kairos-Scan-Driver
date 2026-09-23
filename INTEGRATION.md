@@ -1,8 +1,8 @@
-# Guide d'intégration — OpenScan Agent
+# Guide d'intégration — Kairos Scan Engine
 
 Ce guide s'adresse aux développeurs qui intègrent une application Web (ou tout client HTTP) avec
-l'**OpenScan Agent** déjà installé et tournant sur le poste de l'utilisateur. Pour construire ou
-contribuer au moteur lui-même, voir [`README.md`](./README.md).
+l'**Agent Kairos Scan Engine** déjà installé et tournant sur le poste de l'utilisateur. Pour
+construire ou contribuer au moteur lui-même, voir [`README.md`](./README.md).
 
 ## Prérequis côté utilisateur final
 
@@ -61,8 +61,8 @@ async function listScanners() {
 ```
 
 Toujours prévoir le cas `isAgentAvailable() === false` dans votre UI (message "veuillez installer
-OpenScan Agent" avec un lien vers l'installateur) — un utilisateur sans l'Agent installé, ou avec
-un antivirus qui bloque le port local, est un cas normal à gérer, pas une exception.
+Kairos Scan Engine" avec un lien vers l'installateur) — un utilisateur sans l'Agent installé, ou
+avec un antivirus qui bloque le port local, est un cas normal à gérer, pas une exception.
 
 ### 3. Lire les capacités réelles avant de proposer des options à l'utilisateur
 

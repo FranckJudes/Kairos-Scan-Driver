@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# OpenScan Engine - Script de désinstallation du service systemd sous Linux
+# Kairos Scan Engine - Script de désinstallation du service systemd sous Linux
 # ==============================================================================
 
 INSTALL_DIR="/opt/openscan-agent"

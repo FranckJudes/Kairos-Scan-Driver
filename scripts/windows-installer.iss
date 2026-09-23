@@ -1,5 +1,5 @@
 ; ==============================================================================
-; OpenScan Engine — Inno Setup Script (Windows Installer)
+; Kairos Scan Engine — Inno Setup Script (Windows Installer)
 ; ==============================================================================
 ; Build: ISCC.exe /DAppVersion=1.0.0 /DPublishDir=publish\win-x64 scripts\windows-installer.iss
 ; ==============================================================================
@@ -19,13 +19,13 @@
 
 [Setup]
 AppId={{B8D2F4E1-3A5C-4F9B-9E7D-1C2A3B4D5E6F}
-AppName=OpenScan Engine Agent
+AppName=Kairos Scan Engine Agent
 AppVersion={#AppVersion}
-AppVerName=OpenScan Engine Agent {#AppVersion}
+AppVerName=Kairos Scan Engine Agent {#AppVersion}
 AppPublisher=Kairos / FranckJudes
 AppPublisherURL=https://github.com/FranckJudes/Kairos-Scan-Driver
 DefaultDirName={autopf}\OpenScan\Agent
-DefaultGroupName=OpenScan Engine
+DefaultGroupName=Kairos Scan Engine
 DisableProgramGroupPage=yes
 OutputDir={#SourcePath}\..\installers
 OutputBaseFilename=OpenScanEngineSetup-{#AppVersion}-x64
@@ -56,10 +56,10 @@ Filename: "sc.exe"; Parameters: "stop OpenScanAgent"; Flags: runhidden nowait; S
 Filename: "cmd.exe"; Parameters: "/c timeout /t 2 /nobreak >nul & sc.exe delete OpenScanAgent"; Flags: runhidden; StatusMsg: "Suppression de l'ancien service..."; Check: ServiceExists
 
 ; Création du service avec démarrage automatique
-Filename: "sc.exe"; Parameters: "create OpenScanAgent binPath= ""{app}\OpenScan.Agent.exe"" start= auto DisplayName= ""OpenScan Engine Agent"""; Flags: runhidden; StatusMsg: "Enregistrement du service OpenScanAgent..."
+Filename: "sc.exe"; Parameters: "create OpenScanAgent binPath= ""{app}\OpenScan.Agent.exe"" start= auto DisplayName= ""Kairos Scan Engine Agent"""; Flags: runhidden; StatusMsg: "Enregistrement du service OpenScanAgent..."
 
 ; Description
-Filename: "sc.exe"; Parameters: "description OpenScanAgent ""Moteur d'acquisition et agent de numérisation OpenScan Engine (arrière-plan permanent)."""; Flags: runhidden
+Filename: "sc.exe"; Parameters: "description OpenScanAgent ""Moteur d'acquisition et agent de numérisation Kairos Scan Engine (arrière-plan permanent)."""; Flags: runhidden
 
 ; Configuration du redémarrage automatique en cas de crash
 ; Redémarrage après 5 secondes, reset du compteur après 24h (86400s)

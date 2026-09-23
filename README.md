@@ -14,7 +14,7 @@ Implémentation du cahier des charges technique
 Application Web
       │  HTTPS / WebSocket
       ▼
-OpenScan Agent (.NET 8, local, 127.0.0.1 uniquement)
+Agent Kairos Scan Engine (.NET 8, local, 127.0.0.1 uniquement)
       │
       ▼
 IScannerBackend (abstraction commune)

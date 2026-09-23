@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ==============================================================================
-# OpenScan Engine - Script d'installation du service systemd sous Linux
+# Kairos Scan Engine - Script d'installation du service systemd sous Linux
 # ==============================================================================
 
 INSTALL_DIR="/opt/openscan-agent"
@@ -22,7 +22,7 @@ echo "=== Installation du service ${SERVICE_NAME} ==="
 # 1. Création de l'utilisateur système dédié (sans shell interactif)
 if ! id -u "${USER_NAME}" &>/dev/null; then
     echo "-> Création de l'utilisateur système ${USER_NAME}..."
-    useradd -r -s /bin/false -d "${DATA_DIR}" -c "OpenScan Agent Service" "${USER_NAME}"
+    useradd -r -s /bin/false -d "${DATA_DIR}" -c "Kairos Scan Engine Agent Service" "${USER_NAME}"
 else
     echo "-> L'utilisateur système ${USER_NAME} existe déjà."
 fi

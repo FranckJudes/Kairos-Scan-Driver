@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenScan Engine Agent Service
+Description=Kairos Scan Engine Agent Service
 Documentation=https://github.com/FranckJudes/Kairos-Scan-Driver
 After=network.target
 

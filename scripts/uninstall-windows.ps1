@@ -1,5 +1,5 @@
 # ==============================================================================
-# OpenScan Engine - Script de désinstallation du Service Windows
+# Kairos Scan Engine - Script de désinstallation du Service Windows
 # ==============================================================================
 # Exécuter dans une console PowerShell en tant qu'Administrateur :
 #   PowerShell -ExecutionPolicy Bypass -File .\scripts\uninstall-windows.ps1

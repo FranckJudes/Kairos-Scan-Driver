@@ -107,7 +107,7 @@ jobs:
             printf 'Version: %s\n' "${VERSION}"
             printf 'Architecture: amd64\n'
             printf 'Maintainer: FranckJudes <franck@kairos-scan.dev>\n'
-            printf 'Description: Agent local de numérisation OpenScan Engine\n'
+            printf 'Description: Agent local de numérisation Kairos Scan Engine\n'
             printf ' Expose une API HTTP/WebSocket locale pour piloter les scanners\n'
             printf ' SANE, WIA, TWAIN et eSCL détectés sur le poste.\n'
             printf 'Section: utils\n'
@@ -167,7 +167,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "OpenScan Engine ${{ github.ref_name }}"
+          name: "Kairos Scan Engine ${{ github.ref_name }}"
           draft: false
           prerelease: false
           generate_release_notes: true

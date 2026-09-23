@@ -1,5 +1,5 @@
 # ==============================================================================
-# OpenScan Engine - Script d'installation du Service Windows
+# Kairos Scan Engine - Script d'installation du Service Windows
 # ==============================================================================
 # Exécuter dans une console PowerShell en tant qu'Administrateur :
 #   PowerShell -ExecutionPolicy Bypass -File .\scripts\install-windows.ps1
@@ -11,7 +11,7 @@ param(
     [string]$DataDir = "$env:ProgramData\OpenScan",
     [string]$SourceDir = "",
     [string]$ServiceName = "OpenScanAgent",
-    [string]$DisplayName = "OpenScan Engine Agent"
+    [string]$DisplayName = "Kairos Scan Engine Agent"
 )
 
 # 1. Vérification des droits Administrateur
@@ -78,7 +78,7 @@ if ($existingService) {
 sc.exe create $ServiceName binPath= "`"$exePath`"" start= auto DisplayName= "`"$DisplayName`"" | Out-Null
 
 # Description
-sc.exe description $ServiceName "Moteur d'acquisition et agent de numérisation OpenScan Engine (arrière-plan permanent)." | Out-Null
+sc.exe description $ServiceName "Moteur d'acquisition et agent de numérisation Kairos Scan Engine (arrière-plan permanent)." | Out-Null
 
 # Configuration du redémarrage automatique en cas de crash :
 # Redémarrage après 5 secondes sur 1ère, 2ème et suivantes pannes (reset compteur après 86400s / 1 jour)
