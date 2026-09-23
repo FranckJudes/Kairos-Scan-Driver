@@ -12,6 +12,11 @@
   #define PublishDir "publish\win-x64"
 #endif
 
+; Inno Setup résout tout chemin relatif (OutputDir, [Files] Source) par rapport au dossier
+; contenant CE script .iss, pas par rapport au dossier depuis lequel ISCC.exe est invoqué.
+; PublishDir/OutputDir sont exprimés relatifs à la racine du dépôt (où tourne dotnet publish) :
+; on les ancre donc explicitement sur {#SourcePath}\.. pour retomber sur la racine du dépôt.
+
 [Setup]
 AppId={{B8D2F4E1-3A5C-4F9B-9E7D-1C2A3B4D5E6F}
 AppName=OpenScan Engine Agent
@@ -22,7 +27,7 @@ AppPublisherURL=https://github.com/FranckJudes/Kairos-Scan-Driver
 DefaultDirName={autopf}\OpenScan\Agent
 DefaultGroupName=OpenScan Engine
 DisableProgramGroupPage=yes
-OutputDir=installers
+OutputDir={#SourcePath}\..\installers
 OutputBaseFilename=OpenScanEngineSetup-{#AppVersion}-x64
 Compression=lzma2/max
 SolidCompression=yes
@@ -39,7 +44,7 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
-Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourcePath}\..\{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
 Name: "{commonappdata}\OpenScan"; Permissions: everyone-modify
