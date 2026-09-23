@@ -65,6 +65,18 @@ builder.Services.AddSingleton<IPdfExporter, MinimalPdfExporter>();
 builder.Services.AddSingleton<DeviceManager>();
 builder.Services.AddSingleton<JobManager>();
 
+// N'importe quelle application Web (origine arbitraire) doit pouvoir appeler cet Agent local
+// depuis le navigateur de l'utilisateur — voir INTEGRATION.md. Pas de restriction d'origine ici :
+// l'Agent n'écoute que sur 127.0.0.1, jamais accessible depuis le réseau, donc AllowAnyOrigin ne
+// l'expose pas davantage ; la sécurité vient du binding loopback, pas de CORS.
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy => policy
+        .AllowAnyOrigin()
+        .AllowAnyMethod()
+        .AllowAnyHeader());
+});
+
 var app = builder.Build();
 
 SqliteSchema.EnsureCreated(app.Services.GetRequiredService<SqliteConnectionFactory>());
@@ -78,7 +90,20 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseStaticFiles();
-app.UseHttpsRedirection();
+
+// Chrome (Private Network Access) exige que le serveur renvoie explicitement cet en-tête pour
+// autoriser une page Web, quelle que soit son origine, à appeler une adresse "plus privée"
+// (127.0.0.1) — le middleware CORS standard d'ASP.NET Core ne l'ajoute pas automatiquement.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers.ContainsKey("Access-Control-Request-Private-Network"))
+    {
+        context.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
+    }
+    await next();
+});
+
+app.UseCors();
 app.UseWebSockets();
 
 var api = app.MapGroup("/api/v1");
