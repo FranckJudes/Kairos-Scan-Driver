@@ -1,0 +1,17 @@
+<Project>
+
+  <!--
+    Métadonnées d'assembly communes à tous les projets. Un exécutable sans Company/Product/
+    Description renseignés est un léger signal heuristique supplémentaire pour les moteurs
+    antivirus/EDR (fichier "anonyme") ; ça ne remplace pas une signature de code, mais ça ne
+    coûte rien et c'est une bonne pratique de toute façon.
+  -->
+  <PropertyGroup>
+    <Company>KairosScan Engine</Company>
+    <Product>KairosScan Engine</Product>
+    <Authors>FranckJudes</Authors>
+    <Copyright>Copyright © $([System.DateTime]::Now.Year) FranckJudes</Copyright>
+    <NeutralLanguage>fr</NeutralLanguage>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,52 @@
+#!/bin/sh
+# ==============================================================================
+# OpenScan Engine — Debian postinst maintainer script
+# Exécuté automatiquement par dpkg après l'installation des fichiers.
+# ==============================================================================
+set -e
+
+INSTALL_DIR="/opt/openscan-agent"
+DATA_DIR="/var/lib/openscan"
+USER_NAME="openscan"
+SERVICE_NAME="openscan-agent"
+
+case "$1" in
+    configure)
+        # 1. Création de l'utilisateur système dédié (sans shell interactif)
+        if ! id -u "${USER_NAME}" >/dev/null 2>&1; then
+            useradd -r -s /bin/false -d "${DATA_DIR}" -c "OpenScan Agent Service" "${USER_NAME}"
+        fi
+
+        # 2. Ajout aux groupes scanner et lp (accès aux périphériques USB / SANE)
+        for group in scanner lp; do
+            if getent group "${group}" >/dev/null 2>&1; then
+                usermod -aG "${group}" "${USER_NAME}" 2>/dev/null || true
+            fi
+        done
+
+        # 3. Répertoire de données persistant
+        mkdir -p "${DATA_DIR}"
+        chown -R "${USER_NAME}:${USER_NAME}" "${DATA_DIR}"
+        chmod 750 "${DATA_DIR}"
+
+        # 4. Permissions sur le binaire
+        chmod 755 "${INSTALL_DIR}/OpenScan.Agent"
+
+        # 5. Activation et démarrage du service systemd
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload
+            systemctl enable "${SERVICE_NAME}.service"
+            systemctl start "${SERVICE_NAME}.service" || true
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

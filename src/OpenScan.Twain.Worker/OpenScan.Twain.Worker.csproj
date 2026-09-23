@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AssemblyName>OpenScan.Twain.Worker</AssemblyName>
+    <AssemblyTitle>OpenScan TWAIN Worker</AssemblyTitle>
+    <Description>Processus assistant isolé (x86) exécutant les pilotes TWAIN 32 bits pour le compte d'OpenScan Engine Agent. Communique exclusivement via un pipe stdio local avec son processus parent.</Description>
     <TargetFramework>net8.0</TargetFramework>
     <PlatformTarget>x86</PlatformTarget>
     <ImplicitUsings>enable</ImplicitUsings>

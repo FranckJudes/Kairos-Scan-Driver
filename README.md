@@ -56,8 +56,61 @@ sécurité de session (tokens, origine, DNS rebinding) **ne sont pas encore impl
     installé sur la machine (ex. PaperStream IP pour les scanners Fujitsu).
 - **eSCL** : aucune découverte automatique (mDNS) pour l'instant — déclarer les adresses des
   scanners/imprimantes réseau connus dans `Escl:KnownDevices` (`appsettings.json`).
+## Installation via package
 
-## Démarrage rapide
+Des installeurs prêts à l'emploi sont publiés automatiquement à chaque release sur la page
+[**GitHub Releases**](https://github.com/FranckJudes/Kairos-Scan-Driver/releases) :
+
+### Windows (.exe)
+
+1. Télécharger `OpenScanEngineSetup-X.Y.Z-x64.exe` depuis la page Releases.
+2. Double-cliquer l'installeur (droits administrateur requis).
+3. L'installeur copie les fichiers, crée le service Windows `OpenScanAgent` avec démarrage
+   automatique au boot et redémarrage automatique en cas de crash, puis le démarre.
+4. Désinstallation : via « Ajout/Suppression de programmes » Windows.
+
+> **Note** : L'installeur n'est pas signé numériquement (SmartScreen affichera un avertissement
+> « Éditeur inconnu »). Cliquer « Plus d'infos » → « Exécuter quand même ».
+
+### Linux / Debian (.deb)
+
+```bash
+# Télécharger le paquet depuis la page Releases, puis :
+sudo apt install ./openscan-agent_X.Y.Z_amd64.deb
+```
+
+Le paquet crée automatiquement l'utilisateur système `openscan` (avec accès aux groupes `scanner`
+et `lp`), le répertoire de données `/var/lib/openscan`, installe et démarre le service systemd
+`openscan-agent` avec redémarrage automatique en cas de crash.
+
+```bash
+# Vérification
+systemctl status openscan-agent
+journalctl -u openscan-agent -f
+
+# Désinstallation (conserve les données) :
+sudo apt remove openscan-agent
+
+# Désinstallation complète (supprime les données et l'utilisateur) :
+sudo apt purge openscan-agent
+```
+
+### Alternative : installation manuelle (sans package)
+
+Les scripts `scripts/install-linux.sh` et `scripts/install-windows.ps1` restent utilisables
+pour une installation depuis les sources compilées manuellement :
+
+```bash
+# Linux
+dotnet publish src/OpenScan.Agent -c Release -r linux-x64 --self-contained -o /opt/openscan-agent
+sudo scripts/install-linux.sh
+
+# Windows (PowerShell administrateur)
+dotnet publish src/OpenScan.Agent -c Release -r win-x64 --self-contained
+PowerShell -ExecutionPolicy Bypass -File scripts/install-windows.ps1
+```
+
+## Démarrage rapide (développement)
 
 ```bash
 dotnet build OpenScan.sln
@@ -114,7 +167,7 @@ src/
   OpenScan.Pipeline/         Conversion JPEG (ImageSharp) + export PDF (assembleur maison)
   OpenScan.Security/         Stub — sécurité de session, non implémenté
 tests/
-  OpenScan.Tests/            148 tests xUnit (unitaires + intégration)
+  OpenScan.Tests/            158 tests xUnit (unitaires + intégration)
 docs/                        Notes de handoff et de validation (TWAIN)
 ```
 
@@ -124,7 +177,7 @@ docs/                        Notes de handoff et de validation (TWAIN)
 dotnet test tests/OpenScan.Tests/OpenScan.Tests.csproj
 ```
 
-148 tests couvrent : validation de configuration, réservation de scanners, orchestration de job
+158 tests couvrent : validation de configuration, réservation de scanners, orchestration de job
 de bout en bout (avec le backend Mock), persistance SQLite réelle, parsing des capacités
 SANE/WIA/TWAIN (logique pure, sans matériel), et un test d'intégration simulant un crash du
 worker TWAIN pour vérifier que l'Agent ne plante jamais (exigence de la section 6.5 du cahier
@@ -157,7 +210,7 @@ Non couverts par cette implémentation à ce stade (voir le cahier des charges p
 - Tables de persistance `events`, `errors`, `sessions`, `settings` (seules `jobs`, `pages`,
   `profiles` existent).
 - Journalisation structurée avec corrélation (`correlationId`), métriques de performance,
-  matrice de compatibilité matérielle, packaging (MSI/notarisation/paquets Linux).
+  matrice de compatibilité matérielle, signature numérique de l'installeur Windows.
 
 ## Documentation complémentaire
 

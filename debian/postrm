@@ -1,0 +1,52 @@
+#!/bin/sh
+# ==============================================================================
+# OpenScan Engine — Debian postrm maintainer script
+# Exécuté automatiquement par dpkg après la suppression des fichiers.
+# ==============================================================================
+set -e
+
+SERVICE_NAME="openscan-agent"
+DATA_DIR="/var/lib/openscan"
+USER_NAME="openscan"
+
+case "$1" in
+    remove)
+        # Arrêt et désactivation du service, mais conservation des données utilisateur
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop "${SERVICE_NAME}.service" 2>/dev/null || true
+            systemctl disable "${SERVICE_NAME}.service" 2>/dev/null || true
+            systemctl daemon-reload
+        fi
+        echo "Les données persistantes (SQLite, scans) dans ${DATA_DIR} sont conservées."
+        echo "Pour les supprimer : apt purge openscan-agent"
+        ;;
+
+    purge)
+        # Suppression complète : données + utilisateur système
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl stop "${SERVICE_NAME}.service" 2>/dev/null || true
+            systemctl disable "${SERVICE_NAME}.service" 2>/dev/null || true
+            systemctl daemon-reload
+        fi
+
+        # Suppression du répertoire de données
+        if [ -d "${DATA_DIR}" ]; then
+            rm -rf "${DATA_DIR}"
+        fi
+
+        # Suppression de l'utilisateur système
+        if id -u "${USER_NAME}" >/dev/null 2>&1; then
+            userdel "${USER_NAME}" 2>/dev/null || true
+        fi
+        ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
