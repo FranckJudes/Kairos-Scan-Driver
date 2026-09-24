@@ -17,16 +17,23 @@ using OpenScan.Pipeline;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Hébergement en tant que service (Windows SCM ou systemd Linux)
 builder.Host.UseWindowsService(options => options.ServiceName = "OpenScanAgent");
 builder.Host.UseSystemd();
 
-// Résolution de l'emplacement des données
+// En service Windows, la sortie console n'est visible nulle part — sans ce provider, tous les
+// logs (notamment les échecs de découverte WIA/TWAIN, cf. WiaScannerBackend.DiscoverAsync) sont
+// silencieusement perdus et l'utilisateur n'a aucun moyen de diagnostiquer "scanner branché mais
+// non détecté". Visible ensuite dans l'Observateur d'événements Windows (Journaux des
+// applications, source "OpenScanAgent").
+if (OperatingSystem.IsWindows())
+{
+    builder.Logging.AddEventLog(settings => settings.SourceName = "OpenScanAgent");
+}
+
 var dataDirectory = DataDirectoryResolver.Resolve(
     builder.Configuration["DataDirectory"] ?? builder.Configuration["Data:Directory"]);
 Directory.CreateDirectory(dataDirectory);
 
-// Verrou mono-instance : empêche les collisions de ports et la corruption de base
 var lockTarget = OperatingSystem.IsWindows()
     ? SingleInstanceGuard.DefaultWindowsMutexName
     : Path.Combine(dataDirectory, SingleInstanceGuard.DefaultLinuxLockFileName);
@@ -51,8 +58,11 @@ builder.Services.AddSingleton<IPageRepository, SqlitePageRepository>();
 builder.Services.AddSingleton<IProfileRepository, SqliteProfileRepository>();
 builder.Services.AddSingleton<IPageStorage>(new FileSystemPageStorage(pagesDirectory));
 builder.Services.AddSingleton<IEventBus, InMemoryEventBus>();
-builder.Services.AddSingleton<IScannerBackend, MockScannerBackend>();
-builder.Services.AddSingleton<IScannerBackend, SaneScannerBackend>(); 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<IScannerBackend, MockScannerBackend>();
+}
+builder.Services.AddSingleton<IScannerBackend, SaneScannerBackend>();
 builder.Services.AddSingleton<IScannerBackend, WiaScannerBackend>(); 
 builder.Services.AddHttpClient();
 builder.Services.Configure<EsclOptions>(builder.Configuration.GetSection(EsclOptions.SectionName));
@@ -65,10 +75,6 @@ builder.Services.AddSingleton<IPdfExporter, MinimalPdfExporter>();
 builder.Services.AddSingleton<DeviceManager>();
 builder.Services.AddSingleton<JobManager>();
 
-// N'importe quelle application Web (origine arbitraire) doit pouvoir appeler cet Agent local
-// depuis le navigateur de l'utilisateur — voir INTEGRATION.md. Pas de restriction d'origine ici :
-// l'Agent n'écoute que sur 127.0.0.1, jamais accessible depuis le réseau, donc AllowAnyOrigin ne
-// l'expose pas davantage ; la sécurité vient du binding loopback, pas de CORS.
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy => policy
@@ -91,9 +97,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 
-// Chrome (Private Network Access) exige que le serveur renvoie explicitement cet en-tête pour
-// autoriser une page Web, quelle que soit son origine, à appeler une adresse "plus privée"
-// (127.0.0.1) — le middleware CORS standard d'ASP.NET Core ne l'ajoute pas automatiquement.
 app.Use(async (context, next) =>
 {
     if (context.Request.Headers.ContainsKey("Access-Control-Request-Private-Network"))
@@ -249,7 +252,6 @@ app.Map("/ws", async (HttpContext context, IEventBus eventBus) =>
     }
     catch (OperationCanceledException)
     {
-        // Client déconnecté ou requête annulée : fermeture normale ci-dessous.
     }
     finally
     {

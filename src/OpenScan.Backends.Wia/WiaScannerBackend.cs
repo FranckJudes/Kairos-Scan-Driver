@@ -2,13 +2,16 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using OpenScan.Contracts;
 
 namespace OpenScan.Backends.Wia;
 
-public sealed class WiaScannerBackend : IScannerBackend
+public sealed class WiaScannerBackend(ILogger<WiaScannerBackend> logger) : IScannerBackend
 {
     public const string Id = "wia";
+
+    private readonly ILogger<WiaScannerBackend> _logger = logger;
 
     private const string DeviceManagerProgId = "WIA.DeviceManager";
     private const string FormatBmp = "{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}"; 
@@ -35,9 +38,11 @@ public sealed class WiaScannerBackend : IScannerBackend
         {
             dynamic manager = CreateDeviceManager();
             var scanners = new List<Scanner>();
+            var totalDeviceInfos = 0;
 
             foreach (dynamic info in manager.DeviceInfos)
             {
+                totalDeviceInfos++;
                 if ((int)info.Type != ScannerDeviceType)
                 {
                     continue;
@@ -59,10 +64,32 @@ public sealed class WiaScannerBackend : IScannerBackend
                 });
             }
 
+            // WIA.DeviceManager peut très bien répondre sans erreur mais lister zéro appareil
+            // scanner (ex. service WIA arrêté malgré tout, pilote uniquement TWAIN, appareil
+            // reconnu comme "Unknown device" côté Windows) — journaliser ce cas précis permet de
+            // distinguer "aucun scanner branché" de "un scanner est branché mais Windows ne le
+            // reconnaît pas comme périphérique d'imagerie WIA", ce que l'utilisateur ne peut sinon
+            // absolument pas diagnostiquer lui-même.
+            if (scanners.Count == 0)
+            {
+                _logger.LogWarning(
+                    "WIA.DeviceManager n'a retourné aucun scanner ({TotalDeviceInfos} DeviceInfos au total, tous types confondus). " +
+                    "Vérifier : le service Windows Image Acquisition (WIA) est démarré (services.msc), le scanner apparaît " +
+                    "dans le Gestionnaire de périphériques sous \"Périphériques d'imagerie\" avec un pilote fonctionnel " +
+                    "(pas \"Périphérique inconnu\"), et que le pilote installé est bien un pilote WIA (certains scanners " +
+                    "n'exposent qu'un pilote TWAIN, dans ce cas WIA ne les verra jamais).",
+                    totalDeviceInfos);
+            }
+            else
+            {
+                _logger.LogInformation("WIA.DeviceManager : {ScannerCount} scanner(s) détecté(s) sur {TotalDeviceInfos} DeviceInfos.", scanners.Count, totalDeviceInfos);
+            }
+
             return Task.FromResult<IReadOnlyList<Scanner>>(scanners);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Échec de la découverte WIA (WIA.DeviceManager). Le composant COM est peut-être non enregistré ou le service Windows Image Acquisition (WIA) est arrêté.");
             return Task.FromResult<IReadOnlyList<Scanner>>([]);
         }
     }
