@@ -3,6 +3,8 @@ using OpenScan.Backends.Mock;
 using OpenScan.Contracts;
 using OpenScan.Pipeline;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace OpenScan.Tests;
 
@@ -89,6 +91,41 @@ public class ImageSharpProcessorTests
         await result.JpegStream.ReadExactlyAsync(buffer);
         Assert.Equal(0xFF, buffer[0]);
         Assert.Equal(0xD8, buffer[1]);
+    }
+
+    [Fact]
+    public async Task ProcessPageAsync_WithJpegSource_PassesThroughWithoutReencoding()
+    {
+        // Simule ce que renvoie le backend eSCL : un JPEG déjà produit par le scanner lui-même.
+        using var sourceImage = new Image<Rgba32>(4, 4);
+        var sourceJpegBytes = new MemoryStream();
+        await sourceImage.SaveAsJpegAsync(sourceJpegBytes, new JpegEncoder { Quality = 90 });
+        var originalBytes = sourceJpegBytes.ToArray();
+
+        var processor = new ImageSharpProcessor(jpegQuality: 85);
+        var page = new AcquiredPage
+        {
+            PageNumber = 1,
+            Width = 4,
+            Height = 4,
+            Dpi = 300,
+            PixelFormat = "color",
+            Source = "flatbed",
+            Data = new MemoryStream(originalBytes)
+        };
+
+        var result = await processor.ProcessPageAsync(page);
+
+        Assert.Equal(4, result.Width);
+        Assert.Equal(4, result.Height);
+
+        result.JpegStream.Position = 0;
+        using var outputBytes = new MemoryStream();
+        await result.JpegStream.CopyToAsync(outputBytes);
+
+        // Recopié tel quel, octet pour octet — pas de second passage par le JpegEncoder (qualité
+        // 85 ici) qui aurait produit un fichier différent de l'original (qualité 90).
+        Assert.Equal(originalBytes, outputBytes.ToArray());
     }
 
     [Fact]

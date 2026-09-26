@@ -207,7 +207,10 @@ public sealed class TwainScannerBackend : IScannerBackend
         var duplex = config.Effective.TryGetValue("duplex", out var d) && d is true or "true" or 1;
         var resolution = config.Effective.TryGetValue("resolution", out var r) && int.TryParse(r?.ToString(), out var res) ? res : 300;
         var pixelFormat = config.Effective.GetValueOrDefault("pixel_format")?.ToString() ?? "color";
-        var pageSize = config.Effective.GetValueOrDefault("page_size")?.ToString() ?? "a4";
+        // "auto" (TWSS_NONE) laisse le pilote détecter la taille réelle du document — une valeur
+        // fixe comme "a4" forcerait une zone de capture physique constante, produisant une bande
+        // blanche en bas de page si le document est plus court que cette taille.
+        var pageSize = config.Effective.GetValueOrDefault("page_size")?.ToString() ?? "auto";
 
         var process = StartWorkerProcess(workerPath);
         _activeWorkerProcesses[jobId] = process;

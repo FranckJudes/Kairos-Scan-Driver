@@ -10,7 +10,12 @@ public sealed class ScanProfile
     public int Resolution { get; set; } = 300;
     public string PixelFormat { get; set; } = "color";
     public int? BitDepth { get; set; }
-    public string PageSize { get; set; } = "a4";
+    // "auto" laisse le scanner détecter la taille réelle du document posé/chargé. Une valeur
+    // fixe ("a4", "letter", ...) force le pilote à capturer une zone physique de cette taille
+    // exacte quelle que soit la longueur réelle du document — s'il est plus court, le reste de
+    // la zone est scanné quand même, ce qui produit une bande blanche en bas de la page (backend
+    // TWAIN, voir TwainCapabilityMapper.MapToTwainPaperSize).
+    public string PageSize { get; set; } = "auto";
     public string Orientation { get; set; } = "auto";
     public int? Brightness { get; set; }
     public int? Contrast { get; set; }
