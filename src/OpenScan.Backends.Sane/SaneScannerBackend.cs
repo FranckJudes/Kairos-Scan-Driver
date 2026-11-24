@@ -127,6 +127,7 @@ public sealed class SaneScannerBackend : IScannerBackend
         var duplex = AsBool(configuration.Effective.GetValueOrDefault("duplex"));
         var resolution = AsInt(configuration.Effective.GetValueOrDefault("resolution"), 300);
         var pixelFormat = AsString(configuration.Effective.GetValueOrDefault("pixel_format"), "color");
+        var pageSize = AsString(configuration.Effective.GetValueOrDefault("page_size"), "auto");
 
         var saneSource = ResolveSource(options, requestedSource, duplex)
             ?? throw new ScanEngineException(ErrorCode.CapabilityUnsupported,
@@ -138,7 +139,13 @@ public sealed class SaneScannerBackend : IScannerBackend
                 $"Aucun mode SANE ne correspond à pixel_format='{pixelFormat}' sur ce scanner.")
             { Backend = Id, ScannerId = scannerId, JobId = jobId };
 
-        _jobSettings[jobId] = new ResolvedJobSettings(scannerId, saneSource, saneMode, resolution, requestedSource.Equals("adf", StringComparison.OrdinalIgnoreCase));
+        // Sans ça, scanimage utilise la zone de scan par défaut du pilote (souvent la surface
+        // maximale vitre/ADF), laissant une marge blanche autour de tout document plus petit.
+        // "swcrop" n'est disponible que sur certains pilotes SANE — on ne l'active que s'il est
+        // réellement exposé par ce scanner (sinon scanimage échouerait sur une option inconnue).
+        var softwareCrop = options.SupportsSoftwareCrop && pageSize.Equals("auto", StringComparison.OrdinalIgnoreCase);
+
+        _jobSettings[jobId] = new ResolvedJobSettings(scannerId, saneSource, saneMode, resolution, requestedSource.Equals("adf", StringComparison.OrdinalIgnoreCase), softwareCrop);
     }
 
     public Task StartAsync(string scannerId, string jobId, CancellationToken ct = default) => Task.CompletedTask;
@@ -176,7 +183,12 @@ public sealed class SaneScannerBackend : IScannerBackend
 
         if (!settings.IsAdf)
         {
-            arguments.Add("--batch-count=1"); 
+            arguments.Add("--batch-count=1");
+        }
+
+        if (settings.SoftwareCrop)
+        {
+            arguments.Add("--swcrop=yes");
         }
 
         using var process = StartScanimage(arguments);
@@ -452,5 +464,5 @@ public sealed class SaneScannerBackend : IScannerBackend
         };
     }
 
-    private sealed record ResolvedJobSettings(string ScannerId, string SaneSource, string SaneMode, int Resolution, bool IsAdf);
+    private sealed record ResolvedJobSettings(string ScannerId, string SaneSource, string SaneMode, int Resolution, bool IsAdf, bool SoftwareCrop);
 }

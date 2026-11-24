@@ -22,6 +22,11 @@ public sealed class WiaScannerBackend(ILogger<WiaScannerBackend> logger) : IScan
     private const string HorizontalResolutionProperty = "Horizontal Resolution";
     private const string VerticalResolutionProperty = "Vertical Resolution";
     private const string CurrentIntentProperty = "Current Intent";
+    private const string PageSizeProperty = "Page Size";
+    // WIA_PAGE_AUTO (Wiadef.h) — demande au pilote de détecter lui-même la vraie taille du
+    // document plutôt que d'utiliser la zone de scan par défaut (souvent la surface maximale du
+    // scanner), qui laisse sinon une marge/bande blanche si le document est plus petit.
+    private const int WiaPageAuto = 100;
 
     private readonly ConcurrentDictionary<string, ResolvedJobSettings> _jobSettings = new();
 
@@ -136,6 +141,7 @@ public sealed class WiaScannerBackend(ILogger<WiaScannerBackend> logger) : IScan
         var duplex = AsBool(configuration.Effective.GetValueOrDefault("duplex"));
         var resolution = AsInt(configuration.Effective.GetValueOrDefault("resolution"), 300);
         var pixelFormat = AsString(configuration.Effective.GetValueOrDefault("pixel_format"), "color");
+        var pageSize = AsString(configuration.Effective.GetValueOrDefault("page_size"), "auto");
 
         dynamic device = ConnectDevice(scannerId);
         TrySetDeviceProperty(device, DocumentHandlingSelectProperty, WiaCapabilityMapper.ResolveDocumentHandlingSelect(requestedSource, duplex));
@@ -144,6 +150,12 @@ public sealed class WiaScannerBackend(ILogger<WiaScannerBackend> logger) : IScan
         TrySetItemProperty(item, HorizontalResolutionProperty, resolution);
         TrySetItemProperty(item, VerticalResolutionProperty, resolution);
         TrySetItemProperty(item, CurrentIntentProperty, WiaCapabilityMapper.ResolveIntent(pixelFormat));
+        if (pageSize.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        {
+            // Sans ça, le pilote WIA scanne par défaut sa zone maximale (vitre/ADF complète),
+            // laissant une marge blanche autour de tout document plus petit que cette zone.
+            TrySetItemProperty(item, PageSizeProperty, WiaPageAuto);
+        }
 
         _jobSettings[jobId] = new ResolvedJobSettings(
             scannerId, resolution, pixelFormat, requestedSource.Equals("adf", StringComparison.OrdinalIgnoreCase));

@@ -9,7 +9,8 @@ public sealed record SaneDeviceOptions(
     IReadOnlyList<string> ModeValues,
     IReadOnlyList<int> Resolutions,
     double? MaxPageWidthMm,
-    double? MaxPageHeightMm);
+    double? MaxPageHeightMm,
+    bool SupportsSoftwareCrop);
 
 
 public static class SaneOptionsParser
@@ -23,9 +24,20 @@ public static class SaneOptionsParser
         var resolutions = ParseResolutions(helpOutput);
         var maxWidth = ParseMaxMillimeters(helpOutput, "page-width");
         var maxHeight = ParseMaxMillimeters(helpOutput, "page-height");
+        var supportsSoftwareCrop = ParseBooleanOption(helpOutput, "swcrop");
 
-        return new SaneDeviceOptions(sourceValues, modeValues, resolutions, maxWidth, maxHeight);
+        return new SaneDeviceOptions(sourceValues, modeValues, resolutions, maxWidth, maxHeight, supportsSoftwareCrop);
     }
+
+    // Les options booléennes de scanimage --help s'affichent sous la forme
+    // "--nom[=(yes|no)]   description [défaut]" — "swcrop" ("software crop") n'existe que sur
+    // certains pilotes SANE (ex. genesys) et demande au pilote de détecter et recadrer
+    // automatiquement les bords blancs du document dans la zone de scan. Il n'existe aucune
+    // option universelle équivalente côté SANE (contrairement à TWSS_NONE en TWAIN ou
+    // WIA_PAGE_AUTO en WIA) — il faut donc vérifier sa présence avant de s'en servir, sous peine
+    // de faire échouer scanimage avec une option inconnue sur les pilotes qui ne l'exposent pas.
+    private static bool ParseBooleanOption(string helpOutput, string optionName) =>
+        Regex.IsMatch(helpOutput, $@"^\s*--{optionName}\[=\(yes\|no\)\]", RegexOptions.Multiline);
 
     private static IReadOnlyList<string> ParseEnumOption(string helpOutput, string optionName)
     {

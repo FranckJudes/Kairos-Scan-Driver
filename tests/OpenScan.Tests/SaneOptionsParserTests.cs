@@ -88,6 +88,45 @@ public class SaneOptionsParserTests
     }
 
     [Fact]
+    public void Parse_FujitsuFi7030_DoesNotSupportSoftwareCrop()
+    {
+        // Confirmé sur la sortie réelle du scanner de l'utilisateur : "swcrop" n'existe pas sur
+        // ce pilote, la détection ne doit donc jamais remonter un faux positif ici.
+        var options = SaneOptionsParser.Parse(FujitsuFi7030HelpOutput);
+
+        Assert.False(options.SupportsSoftwareCrop);
+    }
+
+    [Fact]
+    public void Parse_GenesysFlatbed_DoesNotSupportSoftwareCrop()
+    {
+        var options = SaneOptionsParser.Parse(FlatbedWithDiscreteResolutionsHelpOutput);
+
+        Assert.False(options.SupportsSoftwareCrop);
+    }
+
+    [Fact]
+    public void Parse_DeviceExposingSwcropOption_DetectsSoftwareCropSupport()
+    {
+        const string helpOutput = """
+            Options specific to device `genesys:libusb:001:007':
+              Scan Mode:
+                --source Flatbed|Automatic Document Feeder [Flatbed]
+                    Selects the scan source.
+                --mode Lineart|Gray|Color [Color]
+                    Selects the scan mode.
+                --resolution 75|100|150|200|300|600dpi [300]
+                    Sets the resolution of the scanned image.
+              Advanced:
+                --swcrop[=(yes|no)]        Request driver to remove border from pages digitally [no]
+            """;
+
+        var options = SaneOptionsParser.Parse(helpOutput);
+
+        Assert.True(options.SupportsSoftwareCrop);
+    }
+
+    [Fact]
     public void Parse_UnknownDeviceOutput_ReturnsEmptyOptionsWithoutThrowing()
     {
         var options = SaneOptionsParser.Parse("some unrelated text with no options");
@@ -96,5 +135,6 @@ public class SaneOptionsParserTests
         Assert.Empty(options.ModeValues);
         Assert.Empty(options.Resolutions);
         Assert.Null(options.MaxPageWidthMm);
+        Assert.False(options.SupportsSoftwareCrop);
     }
 }
